@@ -149,7 +149,29 @@ elif fileHeader == fileTypes.YM5_6: # Contains a much more extensive header.
         songComment += chr(data[songOffset])
         songOffset += 1
     songOffset += 1
-    sys.exit()
+    prevFrameData = [None, None, None, None, None, None, None, None, None, None, None, None, None, None]
+    for i in range(0, numFrames):
+        if (i == loopFrame) and (loopFrame != 0):
+            loopOffset = len(vgmOutput)
+        for r in range(0, 14):
+            if (songAttributes & 1): # Interlaced
+                regData = data[int(i + songOffset + (r * numFrames))]
+            else: # Not interlaced (Untested. Can't find any not interlaced files)
+                regData = data[int(songOffset + r + (16 * i))]
+            if not (r == 13 and regData == 0xFF): # If register 13 is FF, it remains unchanged
+                # Don't bother changing a reg if it already has that value
+                # Reg 13 is different, writing to it triggers something, I think?
+                if (not r == 13) and (regData == prevFrameData[r]):
+                    continue
+                vgmOutput.append(0xA0) # AY-3-8910 register set
+                vgmOutput.append(r) # register num
+                vgmOutput.append(regData)
+                prevFrameData[r] = regData
+        if framerate == 50:
+            vgmOutput.append(0x63) # 50Hz wait
+        elif framerate == 60:
+            vgmOutput.append(0x62) # 60Hz wait
+    vgmOutput.append(0x66) # End of Sound Data
     
 # Add the GD3 footer
 gd3Location = len(vgmOutput)
