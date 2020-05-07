@@ -37,6 +37,13 @@ def checkFileHeader(fileData):
         print ("MIX files are not supported")
         return fileTypes.Unsupported
     return fileTypes.Garbage
+    
+def appendGD3String(data, toAppend):
+    stringBytes = toAppend.encode("utf-8")
+    stringBytes += b"\0" # add terminating 0
+    newStringBytes = [0] * (len(stringBytes) * 2)
+    newStringBytes[::2] = stringBytes # nifty way to intersperse zeroes after every element
+    data += list(newStringBytes)
 
 if (len(sys.argv) < 2):
     print("Not enough arguments!")
@@ -74,6 +81,9 @@ framerate = 50 # Defaults to 50 hz if it's not specified
 chipClockspeed = 2000000 # Defaults to 2MHz (Atari ST) if it's not specified
 loopFrame = 0 # 0 = No loop.
 loopOffset = 0
+songName = ""
+authorName = ""
+songComment = ""
 if fileHeader == fileTypes.YM2_3: # Contains no header data, other than "YM3!". Interlaced, with no R14 or R15 data.
     print ("File type is YM2 or YM3")
     print ("WARNING: File lacks clockspeed/framerate data, assuming a 50Hz Atari ST")
@@ -85,7 +95,6 @@ elif fileHeader == fileTypes.YM3b: # Same as YM3, but the last 32 bits of the fi
     numFrames = int((len(data) - 4 - 4) / 14)
     # the loop frame in ym3b is little endian, for some reason???
     loopFrame = (data[len(data) - 1] << 24) | (data[len(data) - 2] << 16) | (data[len(data) - 3] << 8) | data[len(data) - 4]
-    print(str(loopFrame))
 if fileHeader == fileTypes.YM2_3 or fileHeader == fileTypes.YM3b:
     prevFrameData = [None, None, None, None, None, None, None, None, None, None, None, None, None, None]
     for i in range(0, numFrames):
@@ -102,7 +111,10 @@ if fileHeader == fileTypes.YM2_3 or fileHeader == fileTypes.YM3b:
                 vgmOutput.append(r) # register num
                 vgmOutput.append(regData)
                 prevFrameData[r] = regData
-        vgmOutput.append(0x63) # 50Hz wait
+        if framerate == 50:
+            vgmOutput.append(0x63) # 50Hz wait
+        elif framerate == 60:
+            vgmOutput.append(0x62) # 60Hz wait
     vgmOutput.append(0x66) # End of Sound Data
 elif fileHeader == fileTypes.YM5_6: # Contains a much more extensive header.
     print ("File type is YM5 or YM6")
@@ -125,22 +137,51 @@ elif fileHeader == fileTypes.YM5_6: # Contains a much more extensive header.
     for i in range(0, numDigidrumSamples):
         sampleSize = (data[songOffset] << 24) | (data[songOffset + 1] << 16) | (data[songOffset + 2] << 8) | data[songOffset + 3]
         songOffset += 4 + sampleSize
-    songName = ""
     while not data[songOffset] == 0:
         songName += chr(data[songOffset])
         songOffset += 1
     songOffset += 1
-    authorName = ""
     while not data[songOffset] == 0:
         authorName += chr(data[songOffset])
         songOffset += 1
-    songOffset += 1 
-    songComment = ""
+    songOffset += 1
     while not data[songOffset] == 0:
         songComment += chr(data[songOffset])
         songOffset += 1
     songOffset += 1
     sys.exit()
+    
+# Add the GD3 footer
+gd3Location = len(vgmOutput)
+vgmOutput.append(ord("G"))
+vgmOutput.append(ord("d"))
+vgmOutput.append(ord("3"))
+vgmOutput.append(ord(" "))
+vgmOutput.append(0x00)
+vgmOutput.append(0x01)
+vgmOutput.append(0x00)
+vgmOutput.append(0x00)
+gd3SizeLocation = len(vgmOutput)
+vgmOutput.append(0x00) # Placeholder for GD3 size
+vgmOutput.append(0x00)
+vgmOutput.append(0x00)
+vgmOutput.append(0x00)
+appendGD3String(vgmOutput, songName) # English song name
+appendGD3String(vgmOutput, "") # Japanese song name
+appendGD3String(vgmOutput, "") # English game name
+appendGD3String(vgmOutput, "") # Japanese game name
+appendGD3String(vgmOutput, "") # English system name
+appendGD3String(vgmOutput, "") # Japanese system name
+appendGD3String(vgmOutput, authorName) # English author name
+appendGD3String(vgmOutput, "") # Japanese author name
+appendGD3String(vgmOutput, "") # Game release date
+appendGD3String(vgmOutput, "Quinn") # VGM creator name
+appendGD3String(vgmOutput, songComment + "(Converted using Quinn's YMtoVGM converter)") # Notes
+gd3Size = len(vgmOutput) - (gd3SizeLocation + 4)
+vgmOutput[gd3SizeLocation] = gd3Size & 0xFF
+vgmOutput[gd3SizeLocation + 1] = (gd3Size >> 8) & 0xFF
+vgmOutput[gd3SizeLocation + 2] = (gd3Size >> 16) & 0xFF
+vgmOutput[gd3SizeLocation + 3] = (gd3Size >> 24) & 0xFF
     
 # Add the VGM header
 samplesPerFrame = 0
@@ -163,6 +204,11 @@ vgmOutput[0x8] = 0x51 # Saving as VGM version 1.51
 vgmOutput[0x9] = 0x01
 vgmOutput[0xA] = 0x00
 vgmOutput[0xB] = 0x00
+gd3Location = (gd3Location + 0x80) - 0x14
+vgmOutput[0x14] = gd3Location & 0xFF
+vgmOutput[0x15] = (gd3Location >> 8) & 0xFF
+vgmOutput[0x16] = (gd3Location >> 16) & 0xFF
+vgmOutput[0x17] = (gd3Location >> 24) & 0xFF
 totalSamples = numFrames * samplesPerFrame
 vgmOutput[0x18] = totalSamples & 0xFF
 vgmOutput[0x19] = (totalSamples >> 8) & 0xFF
@@ -194,4 +240,3 @@ f = open(os.path.splitext(sys.argv[1])[0] + ".vgm", "wb+")
 f.write(bytearray(vgmOutput))
 f.close()
 print("Successfully converted")
-sys.exit()
