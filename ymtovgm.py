@@ -1,4 +1,5 @@
 import sys
+import os
 from lhafile import LhaFile, BadLhafile
 from enum import Enum
 
@@ -67,54 +68,130 @@ if fileHeader == fileTypes.Garbage: # File isn't already decompressed
 elif fileHeader == fileTypes.Unsupported:
     print ("Error: Unsupported file type")
     sys.exit()
-if fileHeader == fileTypes.YM2_3:
+vgmOutput = []
+numFrames = 0
+framerate = 50 # Defaults to 50 hz if it's not specified
+chipClockspeed = 2000000 # Defaults to 2MHz (Atari ST) if it's not specified
+loopFrame = 0 # 0 = No loop.
+loopOffset = 0
+if fileHeader == fileTypes.YM2_3: # Contains no header data, other than "YM3!". Interlaced, with no R14 or R15 data.
     print ("File type is YM2 or YM3")
-    sys.exit()
-elif fileHeader == fileTypes.YM3b:
+    print ("WARNING: File lacks clockspeed/framerate data, assuming a 50Hz Atari ST")
+    numFrames = (len(data) - 4) / 14
+elif fileHeader == fileTypes.YM3b: # Same as YM3, but the last 32 bits of the file contain the loop point
     print ("File type is YM3b")
-    sys.exit()
-elif fileHeader == fileTypes.YM5_6:
+    print ("WARNING: File lacks clockspeed/framerate data, assuming a 50Hz Atari ST")
+    # Header = 4 bytes, loop point = 4 bytes
+    numFrames = int((len(data) - 4 - 4) / 14)
+    # the loop frame in ym3b is little endian, for some reason???
+    loopFrame = (data[len(data) - 1] << 24) | (data[len(data) - 2] << 16) | (data[len(data) - 3] << 8) | data[len(data) - 4]
+    print(str(loopFrame))
+if fileHeader == fileTypes.YM2_3 or fileHeader == fileTypes.YM3b:
+    prevFrameData = [None, None, None, None, None, None, None, None, None, None, None, None, None, None]
+    for i in range(0, numFrames):
+        if (i == loopFrame) and (loopFrame != 0):
+            loopOffset = len(vgmOutput)
+        for r in range(0, 14):
+            regData = data[int(i + 4 + (r * numFrames))]
+            if not (r == 13 and regData == 0xFF): # If register 13 is FF, it remains unchanged
+                # Don't bother changing a reg if it already has that value
+                # Reg 13 is different, writing to it triggers something, I think?
+                if (not r == 13) and (regData == prevFrameData[r]):
+                    continue
+                vgmOutput.append(0xA0) # AY-3-8910 register set
+                vgmOutput.append(r) # register num
+                vgmOutput.append(regData)
+                prevFrameData[r] = regData
+        vgmOutput.append(0x63) # 50Hz wait
+    vgmOutput.append(0x66) # End of Sound Data
+elif fileHeader == fileTypes.YM5_6: # Contains a much more extensive header.
     print ("File type is YM5 or YM6")
-        
-# NOTE: YM uses big-endian, for some reason.
-numberOfFrames = (data[12] << 24) | (data[13] << 16) | (data[14] << 8) | data[15]
-songAttributes = (data[16] << 24) | (data[17] << 16) | (data[18] << 8) | data[19]
-numDigidrumSamples = (data[20] << 8) | data[21]
-YMClockspeed = (data[22] << 24) | (data[23] << 16) | (data[24] << 8) | data[25]
-framerate = (data[26] << 8) | data[27]
-loopFrame = (data[28] << 24) | (data[29] << 16) | (data[30] << 8) | data[31]
-additionalData = (data[32] << 8) | data[33]
+    # NOTE: YM uses big-endian, for some reason.
+    numFrames = (data[12] << 24) | (data[13] << 16) | (data[14] << 8) | data[15]
+    songAttributes = (data[16] << 24) | (data[17] << 16) | (data[18] << 8) | data[19]
+    numDigidrumSamples = (data[20] << 8) | data[21]
+    chipClockspeed = (data[22] << 24) | (data[23] << 16) | (data[24] << 8) | data[25]
+    framerate = (data[26] << 8) | data[27]
+    loopFrame = (data[28] << 24) | (data[29] << 16) | (data[30] << 8) | data[31]
+    
+    if numDigidrumSamples > 0:
+        print ("WARNING: This file contains digidrum samples that won't be reproduced in the VGM")
+    if not (framerate == 50 or framerate == 60):
+        print ("Framerate isn't 50 or 60. This should never happen? (it's " + str(framerate) + ")")
+        sys.exit()
 
-if numDigidrumSamples > 0:
-    print ("WARNING: This file contains digidrum samples that won't be reproduced in the VGM")
-if not (framerate == 50 or framerate == 60):
-    print ("Framerate isn't 50 or 60. This should never happen? (it's " + str(framerate) + ")")
+    # Skip over the digidrum data
+    songOffset = 34
+    for i in range(0, numDigidrumSamples):
+        sampleSize = (data[songOffset] << 24) | (data[songOffset + 1] << 16) | (data[songOffset + 2] << 8) | data[songOffset + 3]
+        songOffset += 4 + sampleSize
+    songName = ""
+    while not data[songOffset] == 0:
+        songName += chr(data[songOffset])
+        songOffset += 1
+    songOffset += 1
+    authorName = ""
+    while not data[songOffset] == 0:
+        authorName += chr(data[songOffset])
+        songOffset += 1
+    songOffset += 1 
+    songComment = ""
+    while not data[songOffset] == 0:
+        songComment += chr(data[songOffset])
+        songOffset += 1
+    songOffset += 1
     sys.exit()
-
-# Skip over the digidrum data
-songOffset = 34
-for i in range(0, numDigidrumSamples):
-    sampleSize = (data[songOffset] << 24) | (data[songOffset + 1] << 16) | (data[songOffset + 2] << 8) | data[songOffset + 3]
-    songOffset += 4 + sampleSize
     
-songName = ""
-while not data[songOffset] == 0:
-    songName += chr(data[songOffset])
-    songOffset += 1
-songOffset += 1
-    
-authorName = ""
-while not data[songOffset] == 0:
-    authorName += chr(data[songOffset])
-    songOffset += 1
-songOffset += 1
-    
-songComment = ""
-while not data[songOffset] == 0:
-    songComment += chr(data[songOffset])
-    songOffset += 1
-songOffset += 1
-    
-#vgmOutput = []
-#vgmOutput[256] = 0
-#print (vgmOutput)
+# Add the VGM header
+samplesPerFrame = 0
+if framerate == 50:
+    samplesPerFrame = 882
+elif framerate == 60:
+    samplesPerFrame = 735
+for i in range(0, 0x80):
+    vgmOutput.insert(0, 0)
+vgmOutput[0x0] = ord("V")
+vgmOutput[0x1] = ord("g")
+vgmOutput[0x2] = ord("m")
+vgmOutput[0x3] = ord(" ")
+eofOffset = len(vgmOutput) - 4
+vgmOutput[0x4] = eofOffset & 0xFF
+vgmOutput[0x5] = (eofOffset >> 8) & 0xFF
+vgmOutput[0x6] = (eofOffset >> 16) & 0xFF
+vgmOutput[0x7] = (eofOffset >> 24) & 0xFF
+vgmOutput[0x8] = 0x51 # Saving as VGM version 1.51
+vgmOutput[0x9] = 0x01
+vgmOutput[0xA] = 0x00
+vgmOutput[0xB] = 0x00
+totalSamples = numFrames * samplesPerFrame
+vgmOutput[0x18] = totalSamples & 0xFF
+vgmOutput[0x19] = (totalSamples >> 8) & 0xFF
+vgmOutput[0x1A] = (totalSamples >> 16) & 0xFF
+vgmOutput[0x1B] = (totalSamples >> 24) & 0xFF
+if loopFrame != 0:
+    loopOffset = (loopOffset + 0x80) - 0x1C
+    vgmOutput[0x1C] = loopOffset & 0xFF
+    vgmOutput[0x1D] = (loopOffset >> 8) & 0xFF
+    vgmOutput[0x1E] = (loopOffset >> 16) & 0xFF
+    vgmOutput[0x1F] = (loopOffset >> 24) & 0xFF
+    loopSamples = (numFrames - loopFrame) * samplesPerFrame
+    vgmOutput[0x20] = loopSamples & 0xFF
+    vgmOutput[0x21] = (loopSamples >> 8) & 0xFF
+    vgmOutput[0x22] = (loopSamples >> 16) & 0xFF
+    vgmOutput[0x23] = (loopSamples >> 24) & 0xFF
+vgmDataOffset = 0x4C # Data starts at 0x80, 0x80 - 0x34 = 0x4C
+vgmOutput[0x34] = vgmDataOffset & 0xFF
+vgmOutput[0x35] = (vgmDataOffset >> 8) & 0xFF
+vgmOutput[0x36] = (vgmDataOffset >> 16) & 0xFF
+vgmOutput[0x37] = (vgmDataOffset >> 24) & 0xFF
+vgmOutput[0x74] = chipClockspeed & 0xFF
+vgmOutput[0x75] = (chipClockspeed >> 8) & 0xFF
+vgmOutput[0x76] = (chipClockspeed >> 16) & 0xFF
+vgmOutput[0x77] = (chipClockspeed >> 24) & 0xFF
+vgmOutput[0x78] = 0x10 # AY-3-8910 Type = YM2149
+vgmOutput[0x79] = 0x01 # AY-3-8910 Single Output (not sure what this means, but single output works)
+f = open(os.path.splitext(sys.argv[1])[0] + ".vgm", "wb+")
+f.write(bytearray(vgmOutput))
+f.close()
+print("Successfully converted")
+sys.exit()
