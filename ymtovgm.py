@@ -174,6 +174,7 @@ elif fileHeader == fileTypes.YM5_6: # Contains a much more extensive header.
     vgmOutput.append(0x66) # End of Sound Data
     
 # Add the GD3 footer
+# https://vgmrips.net/wiki/GD3_Specification
 gd3Location = len(vgmOutput)
 vgmOutput.append(ord("G"))
 vgmOutput.append(ord("d"))
@@ -206,6 +207,7 @@ vgmOutput[gd3SizeLocation + 2] = (gd3Size >> 16) & 0xFF
 vgmOutput[gd3SizeLocation + 3] = (gd3Size >> 24) & 0xFF
     
 # Add the VGM header
+# https://vgmrips.net/wiki/VGM_Specification
 samplesPerFrame = 0
 if framerate == 50:
     samplesPerFrame = 882
