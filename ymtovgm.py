@@ -1,5 +1,6 @@
 import sys
 import os
+import argparse
 from lhafile import LhaFile, BadLhafile
 from enum import Enum
 
@@ -45,21 +46,26 @@ def appendGD3String(data, toAppend):
     newStringBytes[::2] = stringBytes # nifty way to intersperse zeroes after every element
     data += list(newStringBytes)
 
-if (len(sys.argv) < 2):
-    print("Not enough arguments!")
-    sys.exit()
+parser = argparse.ArgumentParser()
+parser.add_argument('-o', '--output', metavar='<output>', required=False, help='VGM output file (default is [input].vgm)')
+parser.add_argument('input', help='YM source file')
+args = parser.parse_args()
+
+outputFile = args.output
+if (outputFile == None):
+    outputFile = os.path.splitext(args.input)[0] + ".vgm"
 
 try:
-    f = open(sys.argv[1], 'rb')
+    f = open(args.input, 'rb')
 except FileNotFoundError:
-    print("File not found: " + sys.argv[1])
+    print("File not found: " + args.input)
     sys.exit()
 data = f.read()
 f.close()
 fileHeader = checkFileHeader(data)
 if fileHeader == fileTypes.Garbage: # File isn't already decompressed
     try:
-        archive = LhaFile(sys.argv[1])
+        archive = LhaFile(args.input)
     except BadLhafile:
         print ("Unable to decompress the file. Try decompressing it in 7Zip or another archive tool")
         sys.exit()
@@ -260,7 +266,7 @@ vgmOutput[0x76] = (chipClockspeed >> 16) & 0xFF
 vgmOutput[0x77] = (chipClockspeed >> 24) & 0xFF
 vgmOutput[0x78] = 0x10 # AY-3-8910 Type = YM2149
 vgmOutput[0x79] = 0x01 # AY-3-8910 Single Output (not sure what this means, but single output works)
-f = open(os.path.splitext(sys.argv[1])[0] + ".vgm", "wb+")
+f = open(outputFile, "wb+")
 f.write(bytearray(vgmOutput))
 f.close()
-print("Successfully converted")
+print("Successfully converted " + outputFile)
