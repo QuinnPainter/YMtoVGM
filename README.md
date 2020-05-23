@@ -8,7 +8,23 @@ It's also sometimes used for Amstrad CPC tunes, and theoretically it can hold mu
 - [lhafile](https://github.com/FrodeSolheim/python-lhafile) (`pip install lhafile`)
 
 ## Usage
-TODO
+```
+usage: ymtovgm.py [-h] [-o <output>] [-c <clock>] [-r <rate>] input
+
+positional arguments:
+  input                 YM source file
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -o <output>, --output <output>
+                        VGM output file (default is [input].vgm)
+  -c <clock>, --clock <clock>
+                        Clockspeed for files where it isn't specified (default
+                        is 2000000Hz [Atari ST])
+  -r <rate>, --rate <rate>
+                        Sample rate for files where it isn't specified
+                        (default is 50Hz)
+```
 
 ## Supported YM file types
 - YM2
@@ -24,4 +40,3 @@ TODO
 
 ## Possible future improvements
 - Doesn't support Atari ST specific sound effects e.g. digidrums
-- Better command line interface
