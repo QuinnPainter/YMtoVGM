@@ -48,6 +48,8 @@ def appendGD3String(data, toAppend):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-o', '--output', metavar='<output>', required=False, help='VGM output file (default is [input].vgm)')
+parser.add_argument('-c', '--clock', metavar='<clock>', type=int, required=False, help='Clockspeed for files where it isn\'t specified (default is 2000000Hz [Atari ST])', default=2000000)
+parser.add_argument('-r', '--rate', metavar='<rate>', type=int, required=False, help='Sample rate for files where it isn\'t specified (default is 50Hz)', default=50)
 parser.add_argument('input', help='YM source file')
 args = parser.parse_args()
 
@@ -83,8 +85,8 @@ elif fileHeader == fileTypes.Unsupported:
     sys.exit()
 vgmOutput = []
 numFrames = 0
-framerate = 50 # Defaults to 50 hz if it's not specified
-chipClockspeed = 2000000 # Defaults to 2MHz (Atari ST) if it's not specified
+framerate = args.rate
+chipClockspeed = args.clock
 loopFrame = 0 # 0 = No loop.
 loopOffset = 0
 songName = ""
@@ -92,11 +94,11 @@ authorName = ""
 songComment = ""
 if fileHeader == fileTypes.YM2_3: # Contains no header data, other than "YM3!". Interlaced, with no R14 or R15 data.
     print ("File type is YM2 or YM3")
-    print ("WARNING: File lacks clockspeed/framerate data, assuming a 50Hz Atari ST")
+    print ("WARNING: File lacks clockspeed/framerate data, assuming " + str(framerate) + "Hz sample rate, " + str(chipClockspeed) + "Hz clockspeed")
     numFrames = (len(data) - 4) / 14
 elif fileHeader == fileTypes.YM3b: # Same as YM3, but the last 32 bits of the file contain the loop point
     print ("File type is YM3b")
-    print ("WARNING: File lacks clockspeed/framerate data, assuming a 50Hz Atari ST")
+    print ("WARNING: File lacks clockspeed/framerate data, assuming " + str(framerate) + "Hz sample rate, " + str(chipClockspeed) + "Hz clockspeed")
     # Header = 4 bytes, loop point = 4 bytes
     numFrames = int((len(data) - 4 - 4) / 14)
     # the loop frame in ym3b is little endian, for some reason???
